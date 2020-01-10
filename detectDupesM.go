@@ -30,23 +30,31 @@ func main() {
         if errA != nil || errB != nil { fmt.Fprint(w, "UserID format is not allowed"); return }
 
         dataA, dataB := []accessLog{}, []accessLog{}
-        errA = c.Find(bson.M{"user_id": idA}).All(&dataA)   //3.5s - We have >10M records in DB, and ~10K records for idA and idB...
-        errB = c.Find(bson.M{"user_id": idB}).All(&dataB)   //3.5s
-        if errA != nil || errB != nil { fmt.Fprint(w, err.Error()); return }
+        err = c.Find(bson.M{"user_id": idA}).All(&dataA)   //~50ms - We have >10M records in DB, and ~10K records for idA and idB...
+    	if err != nil {
+            fmt.Fprintf(w, "UserID %v %v", idA, err)
+            return
+        }
+        err = c.Find(bson.M{"user_id": idB}).All(&dataB)
+    	if err != nil {
+            fmt.Fprintf(w, "UserID %v %v", idA, err)
+            return
+        }
         
         //Create a map with unique ip-addresses for the first UserId              
         m := map[string]bool{}
         for _, v := range dataA { m[v.Ip_addr] = true }
-        startMapLength := len(m)
 
-        //Delete keys from map
-        for _, v := range dataB { delete(m, v.Ip_addr) }
-        endMapLength := len(m)
-
-        //fmt.Println(m)
+        //Count matches
+        matches := 0
+        for _, v := range dataB {
+            if _, ok := m[v.Ip_addr]; ok {
+                matches++
+            }
+        }
 
         w.Header().Set("Content-Type", "application/json")
-        if startMapLength - endMapLength > 1 {  //Return true if map length decreased more than 1
+        if matches > 1 {
             fmt.Fprint(w, "{\"dupes\":true}")
         } else {
             fmt.Fprint(w, "{\"dupes\":false}")
